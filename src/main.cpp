@@ -50,11 +50,11 @@ void visualizeIntensity(double amt)
 
   if (!valOn)
   {
-    analogWrite(EMAG_PIN, 0x00);
+    digitalWrite(EMAG_PIN, LOW);
   }
   else
   {
-    analogWrite(EMAG_PIN, max(128., min(255., val * 2 * 255)));
+    digitalWrite(EMAG_PIN, HIGH);
   }
 }
 
