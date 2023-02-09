@@ -139,12 +139,15 @@ void setup()
   Serial.begin(115200);
   // AudioLogger::instance().begin(Serial, AudioLogger::Info);
 
+  // Setup MSGEQ7
   MSGEQ7.begin();
 
 #ifdef USE_PIXEL
+  // Setup Metro Pixel
   metroPixel.begin();
 #endif
 
+  // Setup EMAG
   pinMode(EMAG_PIN, OUTPUT);
 
 #if ENABLE_BLUETOOTH == true
@@ -153,7 +156,6 @@ void setup()
   tcfg.length = 4096;
   tcfg.channels = 2;
   tcfg.sample_rate = a2dp_sink.sample_rate();
-  ;
   tcfg.bits_per_sample = 16;
   tcfg.callback = &fftResult;
   fftc.begin(tcfg);
@@ -168,6 +170,7 @@ void setup()
 #endif
 }
 
+// Print the current values to the serial monitor
 void serialBars(uint16_t FPS)
 {
   // Visualize the average bass of both channels
@@ -262,9 +265,6 @@ void loop()
   // Serial raw debug output
   if (newReading && !isBluetooth)
   {
-    // Print the bars
-    // serialBars(newReading);
-
     // Visualize the average bass of both channels
     uint8_t input = MSGEQ7.get(MSGEQ7_BASS);
 
