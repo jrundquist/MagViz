@@ -8,23 +8,25 @@
 
 #define ENABLE_BLUETOOTH false
 
-#define TOUCH_LIMIT 75
-#define UP_PIN T4
-#define DOWN_PIN T7
 #define NUM_BANDS 8
 #define EMAG_PIN A5
 
-#define pinAnalogLeft A0
-#define pinAnalogRight A0
+#define pinIn A0
 #define pinReset 19
 #define pinStrobe 21
 #define MSGEQ7_INTERVAL ReadsPerSecond(50)
 #define MSGEQ7_SMOOTH 191 // Range: 0-255
 
+#if defined(NEOPIXEL_NUM) && defined(PIN_NEOPIXEL)
+#define USE_PIXEL true
+#endif
+
+#ifdef USE_PIXEL
 // metroPixel takes in both the number of pixels (1, the built-in) and the pin)
 Adafruit_NeoPixel metroPixel = Adafruit_NeoPixel(NEOPIXEL_NUM, PIN_NEOPIXEL);
+#endif
 
-CMSGEQ7<MSGEQ7_SMOOTH, pinReset, pinStrobe, pinAnalogLeft> MSGEQ7;
+CMSGEQ7<MSGEQ7_SMOOTH, pinReset, pinStrobe, pinIn> MSGEQ7;
 
 #if ENABLE_BLUETOOTH == true
 uint32_t bands[NUM_BANDS]{/* 0-*/ 63, /* 64-*/ 160, /* 161-*/ 400, /* 401-*/ 1000,
@@ -54,9 +56,11 @@ void visualizeIntensity(double amt)
   // Serial.print(valOn);
   // Serial.print(" ");
   // Serial.println(" ");
+#ifdef USE_PIXEL
   metroPixel.setPixelColor(0, metroPixel.Color(0x50 * (valOn ? 1 : 0), 0x50 * (valOn ? 1 : 0), 0x50 * (valOn ? 1 : 0)));
   // write the pixel color to the Metro's Neopixel
   metroPixel.show();
+#endif
 
   if (!valOn)
   {
@@ -137,7 +141,9 @@ void setup()
 
   MSGEQ7.begin();
 
+#ifdef USE_PIXEL
   metroPixel.begin();
+#endif
 
   pinMode(EMAG_PIN, OUTPUT);
 
@@ -275,17 +281,21 @@ void loop()
 
     if (!isOn && delta > 20 || isOn && delta > 0)
     {
+#ifdef USE_PIXEL
       metroPixel.setPixelColor(0, metroPixel.Color(0x00, 0x03, 0x00));
       // write the pixel color to the Metro's Neopixel
       // metroPixel.show();
+#endif
       digitalWrite(EMAG_PIN, HIGH);
       isOn = true;
     }
     else
     {
+#ifdef USE_PIXEL
       metroPixel.setPixelColor(0, metroPixel.Color(0x00, 0x01, 0x00));
       // write the pixel color to the Metro's Neopixel
       metroPixel.show();
+#endif
       digitalWrite(EMAG_PIN, LOW);
       isOn = false;
     }
@@ -308,8 +318,10 @@ void loop()
     if (pulseNum == 16 || pulseNum == 240)
       isPulseDown = !isPulseDown;
 
+#ifdef USE_PIXEL
     metroPixel.setPixelColor(0, metroPixel.Color(0x00, 0x00, pulseNum / 4));
     metroPixel.show();
+#endif
   }
   else
   {
