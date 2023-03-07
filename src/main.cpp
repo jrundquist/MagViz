@@ -1,21 +1,37 @@
 #include <Arduino.h>
-
 #include <Adafruit_NeoPixel.h>
+#include <vector>
+
+#ifndef ARDUINO_ADAFRUIT_FEATHER_ESP32S2_TFT
+// #define ONBOARD_AUDIO
+#else
+#define SHOW_GRAPHIC
+#endif
+
+#ifdef ONBOARD_AUDIO
 #include "AudioTools.h"
 #include "AudioLibs/AudioESP32FFT.h" // or any other supported inplementation
 #include "BluetoothA2DPSink.h"
-#include "MSGEQ7.h"
+#endif
 
-#define ENABLE_BLUETOOTH false
+#ifdef SHOW_GRAPHIC
+#include <Adafruit_GFX.h>    // Core graphics library
+#include <Adafruit_ST7789.h> // Hardware-specific library for ST7789
+#include <SPI.h>
+// Use dedicated hardware SPI pins
+Adafruit_ST7789 tft = Adafruit_ST7789(TFT_CS, TFT_DC, TFT_RST);
+#endif
+
+#include "MSGEQ7.h"
 
 #define NUM_BANDS 8
 #define EMAG_PIN A5
 
-#define pinIn A0
-#define pinReset 19
-#define pinStrobe 21
-#define MSGEQ7_INTERVAL ReadsPerSecond(50)
-#define MSGEQ7_SMOOTH 191 // Range: 0-255
+#define MSG_OUT A0
+#define MSG_RST MOSI
+#define MSG_READ MISO
+#define MSGEQ7_INTERVAL ReadsPerSecond(10)
+#define MSGEQ7_SMOOTH 100 // Range: 0-255 -- 191
 
 #if defined(NEOPIXEL_NUM) && defined(PIN_NEOPIXEL)
 #define USE_PIXEL true
@@ -26,9 +42,9 @@
 Adafruit_NeoPixel metroPixel = Adafruit_NeoPixel(NEOPIXEL_NUM, PIN_NEOPIXEL);
 #endif
 
-CMSGEQ7<MSGEQ7_SMOOTH, pinReset, pinStrobe, pinIn> MSGEQ7;
+CMSGEQ7<MSGEQ7_SMOOTH, MSG_RST, MSG_READ, MSG_OUT> MSGEQ7;
 
-#if ENABLE_BLUETOOTH == true
+#ifdef ONBOARD_AUDIO
 uint32_t bands[NUM_BANDS]{/* 0-*/ 63, /* 64-*/ 160, /* 161-*/ 400, /* 401-*/ 1000,
                           /* 1001-*/ 2500, /* 2501-*/ 6250, /* 6250-*/ 16001,
                           /* 16001-*/ 23000};
@@ -113,19 +129,6 @@ void fftResult(AudioFFTBase &fft)
     }
   }
 
-  // For debugging purposes, display the band magnitudes
-  // for (int i = 0; i < NUM_BANDS; i++)
-  // {
-
-  //   Serial.print(bandMags[i] / double(totalMag));
-  //   Serial.print(" ");
-  // }
-
-  // Display the max band
-  // Serial.print(" -- ");
-  // Serial.print(maxBin);
-  // Serial.println("");
-
   // Output the
   auto mult = max(0.0, min(1.0, bandMags[bin] / double(totalMag)));
 
@@ -147,10 +150,31 @@ void setup()
   metroPixel.begin();
 #endif
 
+#ifdef SHOW_GRAPHIC
+  Serial.println("Screen");
+
+  // turn on backlite
+  pinMode(TFT_BACKLITE, OUTPUT);
+  digitalWrite(TFT_BACKLITE, HIGH);
+
+  // turn on the TFT / I2C power supply
+  pinMode(TFT_I2C_POWER, OUTPUT);
+  digitalWrite(TFT_I2C_POWER, HIGH);
+  delay(10);
+
+  tft.init(135, 240); // Init ST7789 240x135
+  tft.setRotation(3);
+  tft.fillScreen(ST77XX_BLACK);
+  tft.setTextColor(ST77XX_ORANGE);
+  tft.setTextSize(3);
+  tft.setCursor(0, 0);
+  tft.println("Starting...");
+#endif
+
   // Setup EMAG
   pinMode(EMAG_PIN, OUTPUT);
 
-#if ENABLE_BLUETOOTH == true
+#ifdef ONBOARD_AUDIO
   // Setup FFT
   auto tcfg = fftc.defaultConfig();
   tcfg.length = 4096;
@@ -250,6 +274,30 @@ uint16_t getFPS(bool newReading)
   return prevFPS;
 }
 
+void displayEqualizer(uint16_t FPS)
+{
+  int width = tft.width() / (NUM_BANDS - 1);
+  std::vector<std::tuple<int, uint32_t>> bands = {
+      std::make_tuple(MSGEQ7_0, ST77XX_RED),
+      std::make_tuple(MSGEQ7_1, ST77XX_ORANGE),
+      std::make_tuple(MSGEQ7_2, ST77XX_YELLOW),
+      std::make_tuple(MSGEQ7_3, ST77XX_GREEN),
+      std::make_tuple(MSGEQ7_4, ST77XX_BLUE),
+      std::make_tuple(MSGEQ7_5, ST77XX_MAGENTA),
+      std::make_tuple(MSGEQ7_6, ST77XX_WHITE /* Purple */),
+  };
+  for (int i = 0; i < bands.size(); i++)
+  {
+    int band = std::get<0>(bands[i]);
+    uint32_t color = std::get<1>(bands[i]);
+    Serial.println(MSGEQ7.getVolume());
+    float height = -(float(MSGEQ7.get(band)) / 255.0) * (tft.height() - 5);
+    tft.fillRect(i * width, 0, width, int((tft.height() - 5) + height), ST77XX_BLACK);
+    tft.fillRect(i * width, (tft.height() - 5), width, int(height), color);
+  }
+  delay(0);
+}
+
 uint8_t pulseNum = 16;
 bool isPulseDown = false;
 bool isBluetooth = false;
@@ -265,6 +313,11 @@ void loop()
   // Serial raw debug output
   if (newReading && !isBluetooth)
   {
+#ifdef SHOW_GRAPHIC
+    displayEqualizer(FPS);
+#endif
+    // serialBars(FPS);
+
     // Visualize the average bass of both channels
     uint8_t input = MSGEQ7.get(MSGEQ7_BASS);
 
@@ -282,9 +335,9 @@ void loop()
     if (!isOn && delta > 20 || isOn && delta > 0)
     {
 #ifdef USE_PIXEL
-      metroPixel.setPixelColor(0, metroPixel.Color(0x00, 0x03, 0x00));
+      metroPixel.setPixelColor(0, metroPixel.Color(0xb0, 0x53, 0x00));
       // write the pixel color to the Metro's Neopixel
-      // metroPixel.show();
+      metroPixel.show();
 #endif
       digitalWrite(EMAG_PIN, HIGH);
       isOn = true;
@@ -302,7 +355,7 @@ void loop()
     return;
   }
 
-#if ENABLE_BLUETOOTH == true
+#ifdef ONBOARD_AUDIO
   if (!a2dp_sink.is_connected())
   {
     isBluetooth = false;
